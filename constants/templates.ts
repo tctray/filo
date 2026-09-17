@@ -1,3 +1,4 @@
+// constants/templates.ts
 import type { CoverLetter, Resume, ResumeSectionType } from "@/types";
 
 const generateId = () => Math.random().toString(36).substring(2, 15);
@@ -28,7 +29,7 @@ export type CoverLetterTemplate = Omit<
 
 export const resumeTemplates: ResumeTemplate[] = [
   {
-    templateId: generateId(),
+    templateId: "resume_software_engineer",
     title: "Software Engineer Resume",
     isDraft: false,
     header: {
@@ -107,7 +108,7 @@ export const resumeTemplates: ResumeTemplate[] = [
   },
 
   {
-    templateId: generateId(),
+    templateId: "resume_marketing_manager",
     title: "Marketing Manager Resume",
     isDraft: false,
     header: {
@@ -172,7 +173,7 @@ export const resumeTemplates: ResumeTemplate[] = [
   },
 
   {
-    templateId: generateId(),
+    templateId: "resume_minimal_clean",
     title: "Minimal Clean Resume",
     isDraft: false,
     header: {
@@ -194,7 +195,7 @@ export const resumeTemplates: ResumeTemplate[] = [
 
 export const coverLetterTemplates: CoverLetterTemplate[] = [
   {
-    templateId: generateId(),
+    templateId: "cl_professional",
     title: "Professional Cover Letter",
     jobTitle: "Software Engineer",
     company: "Acme Corp",
@@ -215,7 +216,7 @@ Sincerely,
   },
 
   {
-    templateId: generateId(),
+    templateId: "cl_confident",
     title: "Confident Career Changer",
     jobTitle: "Product Manager",
     company: "Innovation Labs",
@@ -236,7 +237,7 @@ Best,
   },
 
   {
-    templateId: generateId(),
+    templateId: "cl_bold",
     title: "Bold Startup Application",
     jobTitle: "Growth Lead",
     company: "RocketStart",

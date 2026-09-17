@@ -2,10 +2,10 @@ import { useTheme } from "@/providers/ThemeProvider";
 import { Search, X } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import {
-    Animated,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity
+  Animated,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
 } from "react-native";
 
 interface SearchBarProps {

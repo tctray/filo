@@ -1,38 +1,22 @@
-import type { ActionSheetAction } from "@/components/ActionSheet";
-import ActionSheet from "@/components/ActionSheet";
-import FolderPicker from "@/components/FolderPicker";
-import RenameModal from "@/components/RenameModal";
-import SearchBar from "@/components/SearchBar";
-import Toast from "@/components/Toast";
+// app/(tabs)/letters.tsx
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
-import type { CoverLetter } from "@/types";
-import { exportCoverLetterToPdf, exportCoverLetterToRtf } from "@/utils/pdf";
-
-import * as Haptics from "expo-haptics";
-import { Stack, useRouter } from "expo-router";
-
-import {
-  ArrowLeft,
-  FolderOpen,
-  Mail,
-  MoreVertical,
-  Plus,
-  Upload,
-} from "lucide-react-native";
-
-import React, { useCallback, useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
-  Platform,
+  SafeAreaView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
-function formatDate(iso: string) {
+function formatDate(iso?: string) {
+  if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -40,455 +24,400 @@ function formatDate(iso: string) {
   });
 }
 
-export default function CoverLettersScreen() {
-  const { colors } = useTheme();
+function initials(title: string) {
+  return title
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+// ── List Card ──
+function ListCard({
+  item,
+  colors,
+  onPress,
+  onDelete,
+}: {
+  item: any;
+  colors: any;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.listCard,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View style={[styles.listIconWrap, { backgroundColor: "#60A5FA18" }]}>
+        <Ionicons name="mail-outline" size={20} color="#60A5FA" />
+      </View>
+      <View style={styles.listInfo}>
+        <Text
+          style={[styles.listTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
+          {item.title ?? "Untitled Letter"}
+        </Text>
+        <Text style={[styles.listMeta, { color: colors.textTertiary }]}>
+          {item.company
+            ? `${item.company}${item.jobTitle ? ` · ${item.jobTitle}` : ""}`
+            : formatDate(item.updatedAt)}
+        </Text>
+      </View>
+      <View style={styles.listActions}>
+        <TouchableOpacity
+          onPress={onDelete}
+          hitSlop={8}
+          style={[
+            styles.listDeleteBtn,
+            { backgroundColor: "#EF444415", borderColor: "#EF444430" },
+          ]}
+        >
+          <Ionicons name="trash-outline" size={15} color="#EF4444" />
+        </TouchableOpacity>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={colors.textTertiary}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── Grid Card ──
+function GridCard({
+  item,
+  colors,
+  onPress,
+  onDelete,
+}: {
+  item: any;
+  colors: any;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.gridCard,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.gridTop}>
+        <View
+          style={[styles.gridInitialWrap, { backgroundColor: "#60A5FA18" }]}
+        >
+          <Text style={[styles.gridInitial, { color: "#60A5FA" }]}>
+            {initials(item.title ?? "L")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onDelete}
+          hitSlop={8}
+          style={[styles.gridDeleteBtn, { backgroundColor: "#EF444415" }]}
+        >
+          <Ionicons name="trash-outline" size={14} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+      <Text
+        style={[styles.gridTitle, { color: colors.text }]}
+        numberOfLines={2}
+      >
+        {item.title ?? "Untitled Letter"}
+      </Text>
+      {item.company ? (
+        <Text
+          style={[styles.gridSub, { color: colors.textSecondary }]}
+          numberOfLines={1}
+        >
+          {item.company}
+        </Text>
+      ) : null}
+      {item.jobTitle ? (
+        <Text
+          style={[styles.gridRole, { color: colors.textTertiary }]}
+          numberOfLines={1}
+        >
+          {item.jobTitle}
+        </Text>
+      ) : null}
+      <Text style={[styles.gridDate, { color: colors.textTertiary }]}>
+        {formatDate(item.updatedAt)}
+      </Text>
+      {item.body ? (
+        <View
+          style={[styles.gridPreviewRow, { borderTopColor: colors.border }]}
+        >
+          <Text
+            style={[styles.gridPreviewText, { color: colors.textTertiary }]}
+            numberOfLines={2}
+          >
+            {item.body}
+          </Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+export default function LettersTab() {
+  const { colors, mode } = useTheme();
+  const { coverLetters, deleteCoverLetter } = useData();
   const router = useRouter();
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
-  const {
-    coverLetters,
-    deleteCoverLetter,
-    duplicateCoverLetter,
-    renameCoverLetter,
-    moveCoverLetterToFolder,
-    folders,
-    addFolder,
-  } = useData();
-
-  const [search, setSearch] = useState("");
-  const [actionSheetVisible, setActionSheetVisible] = useState(false);
-  const [selectedLetter, setSelectedLetter] = useState<CoverLetter | null>(
-    null,
-  );
-  const [renameVisible, setRenameVisible] = useState(false);
-  const [folderPickerVisible, setFolderPickerVisible] = useState(false);
-  const [toast, setToast] = useState({
-    visible: false,
-    message: "",
-    type: "success" as const,
-  });
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return coverLetters;
-    const q = search.toLowerCase();
-    return coverLetters.filter(
-      (cl) =>
-        cl.title.toLowerCase().includes(q) ||
-        cl.company.toLowerCase().includes(q) ||
-        cl.jobTitle.toLowerCase().includes(q) ||
-        (cl.tags ?? []).some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [coverLetters, search]);
-
-  const showToast = useCallback((message: string) => {
-    setToast({ visible: true, message, type: "success" });
-  }, []);
-
-  const openActionSheet = useCallback((letter: CoverLetter) => {
-    setSelectedLetter(letter);
-    setActionSheetVisible(true);
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-  }, []);
-
-  const handleDuplicate = useCallback(async () => {
-    if (!selectedLetter) return;
-    await duplicateCoverLetter(selectedLetter.id);
-    showToast("Cover letter duplicated");
-  }, [selectedLetter, duplicateCoverLetter, showToast]);
-
-  const handleRename = useCallback(
-    async (newName: string) => {
-      if (!selectedLetter) return;
-      await renameCoverLetter(selectedLetter.id, newName);
-      showToast("Cover letter renamed");
-    },
-    [selectedLetter, renameCoverLetter, showToast],
+  const sorted = useMemo(
+    () =>
+      [...(coverLetters ?? [])].sort(
+        (a, b) =>
+          new Date(b.updatedAt ?? 0).getTime() -
+          new Date(a.updatedAt ?? 0).getTime(),
+      ),
+    [coverLetters],
   );
 
-  const handleExportPdf = useCallback(async () => {
-    if (!selectedLetter) return;
-    try {
-      await exportCoverLetterToPdf(selectedLetter);
-      showToast("Cover letter exported as PDF");
-    } catch (e) {
-      console.log("[PDF] Export error:", e);
-      Alert.alert("Export Error", "Failed to export PDF.");
-    }
-  }, [selectedLetter, showToast]);
-
-  const handleExportRtf = useCallback(async () => {
-    if (!selectedLetter) return;
-    try {
-      await exportCoverLetterToRtf(selectedLetter);
-      showToast("Cover letter exported as RTF");
-    } catch (e) {
-      console.log("[RTF] Export error:", e);
-      Alert.alert("Export Error", "Failed to export RTF.");
-    }
-  }, [selectedLetter, showToast]);
-
-  const handleDelete = useCallback(() => {
-    if (!selectedLetter) return;
+  const handleDelete = (item: any) => {
     Alert.alert(
-      "Delete Cover Letter",
-      `Are you sure you want to delete "${selectedLetter.title}"?`,
+      "Delete Letter?",
+      `"${item.title ?? "Untitled"}" will be permanently deleted.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await deleteCoverLetter(selectedLetter.id);
-            showToast("Cover letter deleted");
+            try {
+              await (deleteCoverLetter as any)(item.id);
+            } catch (e: any) {
+              Alert.alert("Delete failed", e?.message);
+            }
           },
         },
       ],
     );
-  }, [selectedLetter, deleteCoverLetter, showToast]);
-
-  const handleMoveToFolder = useCallback(
-    async (folderId: string) => {
-      if (!selectedLetter) return;
-      await moveCoverLetterToFolder(selectedLetter.id, folderId);
-      const folder = folders.find((f) => f.id === folderId);
-      showToast(`Moved to ${folder?.name ?? "folder"}`);
-    },
-    [selectedLetter, moveCoverLetterToFolder, folders, showToast],
-  );
-
-  const handleRemoveFromFolder = useCallback(async () => {
-    if (!selectedLetter) return;
-    await moveCoverLetterToFolder(selectedLetter.id, undefined);
-    showToast("Removed from folder");
-  }, [selectedLetter, moveCoverLetterToFolder, showToast]);
-
-  const handleCreateFolder = useCallback(
-    async (name: string, color: string) => {
-      await addFolder(name, color);
-      showToast(`Folder "${name}" created`);
-    },
-    [addFolder, showToast],
-  );
-
-  const toneLabel = (tone: string) => {
-    const map: Record<string, string> = {
-      formal: "Formal",
-      confident: "Confident",
-      bold: "Bold",
-    };
-    return map[tone] || tone;
   };
 
-  const actions: ActionSheetAction[] = useMemo(
-    () => [
-      {
-        label: "Duplicate",
-        icon: "duplicate" as const,
-        onPress: handleDuplicate,
-      },
-      {
-        label: "Rename",
-        icon: "rename" as const,
-        onPress: () => setRenameVisible(true),
-      },
-      {
-        label: "Move to Folder",
-        icon: "folder" as const,
-        onPress: () => setFolderPickerVisible(true),
-      },
-      {
-        label: "Export PDF",
-        icon: "export" as const,
-        onPress: handleExportPdf,
-      },
-      {
-        label: "Export RTF",
-        icon: "export-rtf" as const,
-        onPress: handleExportRtf,
-      },
-      {
-        label: "Delete",
-        icon: "delete" as const,
-        destructive: true,
-        onPress: handleDelete,
-      },
-    ],
-    [handleDuplicate, handleExportPdf, handleExportRtf, handleDelete],
-  );
-
-  const getFolderForLetter = useCallback(
-    (folderId?: string) => {
-      if (!folderId) return null;
-      return folders.find((f) => f.id === folderId) ?? null;
-    },
-    [folders],
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: CoverLetter }) => {
-      const folder = getFolderForLetter(item.folder);
-
-      return (
-        <TouchableOpacity
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              shadowColor: colors.cardShadow,
-            },
-          ]}
-          onPress={() =>
-            router.push({
-              pathname: "/coverletter-editor" as never,
-              params: { id: item.id },
-            })
-          }
-          onLongPress={() => openActionSheet(item)}
-          activeOpacity={0.7}
-          testID={`coverletter-card-${item.id}`}
-        >
-          <View style={styles.cardTop}>
-            <View
-              style={[
-                styles.cardIcon,
-                { backgroundColor: colors.accent + "1A" },
-              ]}
-            >
-              {item.uploadedFile ? (
-                <Upload color={colors.accent} size={20} />
-              ) : (
-                <Mail color={colors.accent} size={20} />
-              )}
-            </View>
-
-            <View style={styles.cardInfo}>
-              <Text
-                style={[styles.cardTitle, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {item.title}
-              </Text>
-
-              <Text style={[styles.cardMeta, { color: colors.textTertiary }]}>
-                {item.company}
-                {item.company && " · "}
-                {toneLabel(item.tone)} · {formatDate(item.updatedAt)}
-              </Text>
-
-              {folder && (
-                <View style={styles.folderTag}>
-                  <FolderOpen color={folder.color} size={11} />
-                  <Text style={[styles.folderTagText, { color: folder.color }]}>
-                    {folder.name}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.moreBtn,
-                { backgroundColor: colors.surfacePressed },
-              ]}
-              onPress={() => openActionSheet(item)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MoreVertical color={colors.textTertiary} size={18} />
-            </TouchableOpacity>
-          </View>
-
-          <View
-            style={[styles.glowLine, { backgroundColor: colors.accent + "22" }]}
-          />
-        </TouchableOpacity>
-      );
-    },
-    [colors, router, openActionSheet, getFolderForLetter],
-  );
+  const handlePress = (item: any) =>
+    router.push({
+      pathname: "/coverletter-viewer",
+      params: { id: item.id },
+    } as never);
 
   return (
-    <>
-      {/* ✅ Header + Mint Back Button */}
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: "Letters",
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-          headerTitleStyle: { color: colors.text },
-          headerTintColor: colors.accent,
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{ paddingHorizontal: 12, paddingVertical: 6 }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <ArrowLeft color={colors.accent} size={22} />
-            </TouchableOpacity>
-          ),
-        }}
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <StatusBar
+        barStyle={mode === "dark" ? "light-content" : "dark-content"}
       />
 
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.searchWrap}>
-          <SearchBar
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search cover letters..."
-          />
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          Letters
+        </Text>
+        <View style={styles.headerRight}>
+          <View
+            style={[
+              styles.toggleWrap,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={() => setViewMode("list")}
+              style={[
+                styles.toggleBtn,
+                viewMode === "list" && { backgroundColor: colors.accent },
+              ]}
+            >
+              <Ionicons
+                name="list-outline"
+                size={16}
+                color={
+                  viewMode === "list"
+                    ? (colors.accentText ?? "#fff")
+                    : colors.textSecondary
+                }
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setViewMode("grid")}
+              style={[
+                styles.toggleBtn,
+                viewMode === "grid" && { backgroundColor: colors.accent },
+              ]}
+            >
+              <Ionicons
+                name="grid-outline"
+                size={16}
+                color={
+                  viewMode === "grid"
+                    ? (colors.accentText ?? "#fff")
+                    : colors.textSecondary
+                }
+              />
+            </TouchableOpacity>
+          </View>
+          {/* New button — mint */}
+          <TouchableOpacity
+            onPress={() => router.push("/coverletter-editor" as never)}
+            style={[styles.newBtn, { backgroundColor: colors.accent }]}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="add"
+              size={18}
+              color={colors.accentText ?? "#fff"}
+            />
+          </TouchableOpacity>
         </View>
-
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <View
-                style={[
-                  styles.emptyIcon,
-                  { backgroundColor: colors.accent + "1A" },
-                ]}
-              >
-                <Mail color={colors.accent} size={36} />
-              </View>
-              <Text style={[styles.emptyTitle, { color: colors.text }]}>
-                {search ? "No results found" : "No cover letters yet"}
-              </Text>
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                {search
-                  ? "Try a different search term"
-                  : "Write a cover letter for your next application"}
-              </Text>
-            </View>
-          }
-        />
-
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.accent }]}
-          onPress={() => router.push("/coverletter-editor" as never)}
-          activeOpacity={0.8}
-          testID="add-coverletter"
-        >
-          <Plus color={colors.accentText} size={24} />
-        </TouchableOpacity>
-
-        <ActionSheet
-          visible={actionSheetVisible}
-          title={selectedLetter?.title ?? ""}
-          actions={actions}
-          onClose={() => setActionSheetVisible(false)}
-        />
-
-        <RenameModal
-          visible={renameVisible}
-          currentName={selectedLetter?.title ?? ""}
-          onRename={handleRename}
-          onClose={() => setRenameVisible(false)}
-        />
-
-        <FolderPicker
-          visible={folderPickerVisible}
-          folders={folders}
-          currentFolder={selectedLetter?.folder}
-          onSelect={handleMoveToFolder}
-          onCreateFolder={handleCreateFolder}
-          onRemoveFromFolder={handleRemoveFromFolder}
-          onClose={() => setFolderPickerVisible(false)}
-        />
-
-        <Toast
-          visible={toast.visible}
-          message={toast.message}
-          type={toast.type}
-          onDismiss={() => setToast((t) => ({ ...t, visible: false }))}
-        />
       </View>
-    </>
+
+      {sorted.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="mail-outline" size={48} color={colors.textTertiary} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>
+            No letters yet
+          </Text>
+          <Text style={[styles.emptySub, { color: colors.textTertiary }]}>
+            Tap + to write your first cover letter
+          </Text>
+        </View>
+      ) : viewMode === "list" ? (
+        <FlatList
+          key="list"
+          data={sorted}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <ListCard
+              item={item}
+              colors={colors}
+              onPress={() => handlePress(item)}
+              onDelete={() => handleDelete(item)}
+            />
+          )}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <FlatList
+          key="grid"
+          data={sorted}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          renderItem={({ item }) => (
+            <GridCard
+              item={item}
+              colors={colors}
+              onPress={() => handlePress(item)}
+              onDelete={() => handleDelete(item)}
+            />
+          )}
+          contentContainerStyle={styles.gridContainer}
+          columnWrapperStyle={styles.gridRow}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  searchWrap: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  list: { padding: 20, paddingTop: 0, paddingBottom: 120 },
-
-  card: {
-    borderRadius: 16,
+  safe: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  headerTitle: { fontSize: 28, fontWeight: "800" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  toggleWrap: {
+    flexDirection: "row",
+    borderRadius: 10,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
     overflow: "hidden",
   },
-  cardTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  cardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+  toggleBtn: {
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardInfo: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "600" as const },
-  cardMeta: { fontSize: 12, marginTop: 2 },
-
-  folderTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  folderTagText: { fontSize: 11, fontWeight: "500" as const },
-
-  moreBtn: {
+  newBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-
-  glowLine: {
-    height: 2,
-    borderRadius: 1,
-    marginTop: 14,
-    marginHorizontal: -16,
-    marginBottom: -16,
+  listContainer: { padding: 18, gap: 10 },
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
   },
-
-  fab: {
-    position: "absolute",
-    right: 20,
-    bottom: 22,
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  listIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
-    elevation: 7,
   },
-
-  empty: { alignItems: "center", paddingTop: 80 },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
+  listInfo: { flex: 1 },
+  listTitle: { fontSize: 14, fontWeight: "700" },
+  listMeta: { fontSize: 12, marginTop: 2 },
+  listActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  listDeleteBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
   },
-  emptyTitle: { fontSize: 18, fontWeight: "600" as const, marginBottom: 6 },
-  emptyText: { fontSize: 14, textAlign: "center", paddingHorizontal: 24 },
+  gridContainer: { padding: 18, paddingBottom: 40 },
+  gridRow: { gap: 12, marginBottom: 12 },
+  gridCard: { flex: 1, borderWidth: 1, borderRadius: 16, padding: 14 },
+  gridTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+  gridInitialWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridInitial: { fontSize: 16, fontWeight: "800" },
+  gridDeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridTitle: { fontSize: 13, fontWeight: "700", marginBottom: 2 },
+  gridSub: { fontSize: 12, marginBottom: 2 },
+  gridRole: { fontSize: 11, marginBottom: 4 },
+  gridDate: { fontSize: 11, marginBottom: 8 },
+  gridPreviewRow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
+  gridPreviewText: { fontSize: 11, lineHeight: 15 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: "700", marginTop: 8 },
+  emptySub: { fontSize: 14 },
 });

@@ -1,39 +1,22 @@
-import type { ActionSheetAction } from "@/components/ActionSheet";
-import ActionSheet from "@/components/ActionSheet";
-import FolderPicker from "@/components/FolderPicker";
-import RenameModal from "@/components/RenameModal";
-import SearchBar from "@/components/SearchBar";
-import Toast from "@/components/Toast";
+// app/(tabs)/resumes.tsx
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
-import type { Resume } from "@/types";
-
-import { exportResumeToPdf, exportResumeToRtf } from "@/utils/pdf";
-
-import * as Haptics from "expo-haptics";
-import { Stack, useRouter } from "expo-router";
-
-import {
-  ArrowLeft,
-  FileText,
-  FolderOpen,
-  MoreVertical,
-  Plus,
-  Upload,
-} from "lucide-react-native";
-
-import React, { useCallback, useMemo, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
-  Platform,
+  SafeAreaView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 
-function formatDate(iso: string) {
+function formatDate(iso?: string) {
+  if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -41,391 +24,409 @@ function formatDate(iso: string) {
   });
 }
 
-export default function ResumesScreen() {
-  const { colors } = useTheme();
+function initials(title: string) {
+  return title
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+// ── List Card ──
+function ListCard({
+  item,
+  colors,
+  onPress,
+  onDelete,
+}: {
+  item: any;
+  colors: any;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.listCard,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View
+        style={[styles.listIconWrap, { backgroundColor: colors.accent + "18" }]}
+      >
+        <Ionicons
+          name="document-text-outline"
+          size={20}
+          color={colors.accent}
+        />
+      </View>
+
+      <View style={styles.listInfo}>
+        <Text
+          style={[styles.listTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
+          {item.title ?? "Untitled Resume"}
+        </Text>
+        <Text style={[styles.listMeta, { color: colors.textTertiary }]}>
+          {item.fullName ? `${item.fullName} · ` : ""}
+          {formatDate(item.updatedAt)}
+        </Text>
+      </View>
+
+      <View style={styles.listActions}>
+        <TouchableOpacity
+          onPress={onDelete}
+          hitSlop={8}
+          style={[
+            styles.listIconBtn,
+            { backgroundColor: "#EF444415", borderColor: "#EF444430" },
+          ]}
+        >
+          <Ionicons name="trash-outline" size={15} color="#EF4444" />
+        </TouchableOpacity>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={colors.textTertiary}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// ── Grid Card ──
+function GridCard({
+  item,
+  colors,
+  onPress,
+  onDelete,
+}: {
+  item: any;
+  colors: any;
+  onPress: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        styles.gridCard,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.gridTop}>
+        <View
+          style={[
+            styles.gridInitialWrap,
+            { backgroundColor: colors.accent + "18" },
+          ]}
+        >
+          <Text style={[styles.gridInitial, { color: colors.accent }]}>
+            {initials(item.title ?? "R")}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={onDelete}
+          hitSlop={8}
+          style={[styles.gridIconBtn, { backgroundColor: "#EF444415" }]}
+        >
+          <Ionicons name="trash-outline" size={14} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+
+      <Text
+        style={[styles.gridTitle, { color: colors.text }]}
+        numberOfLines={2}
+      >
+        {item.title ?? "Untitled Resume"}
+      </Text>
+
+      {item.fullName ? (
+        <Text
+          style={[styles.gridSub, { color: colors.textSecondary }]}
+          numberOfLines={1}
+        >
+          {item.fullName}
+        </Text>
+      ) : null}
+
+      <Text style={[styles.gridDate, { color: colors.textTertiary }]}>
+        {formatDate(item.updatedAt)}
+      </Text>
+
+      {item.skills?.length > 0 && (
+        <View style={[styles.gridSkillRow, { borderTopColor: colors.border }]}>
+          <Text
+            style={[styles.gridSkillText, { color: colors.textTertiary }]}
+            numberOfLines={1}
+          >
+            {item.skills.slice(0, 3).join(" · ")}
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+export default function ResumesTab() {
+  const { colors, mode } = useTheme();
+  const { resumes, deleteResume } = useData();
   const router = useRouter();
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
 
-  const {
-    resumes,
-    deleteResume,
-    duplicateResume,
-    renameResume,
-    moveResumeToFolder,
-    folders,
-    addFolder,
-  } = useData();
-
-  const [search, setSearch] = useState("");
-  const [actionSheetVisible, setActionSheetVisible] = useState(false);
-  const [selectedResume, setSelectedResume] = useState<Resume | null>(null);
-  const [renameVisible, setRenameVisible] = useState(false);
-  const [folderPickerVisible, setFolderPickerVisible] = useState(false);
-  const [toast, setToast] = useState({
-    visible: false,
-    message: "",
-    type: "success" as const,
-  });
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return resumes;
-    const q = search.toLowerCase();
-    return resumes.filter((r) => r.title.toLowerCase().includes(q));
-  }, [resumes, search]);
-
-  const showToast = useCallback((message: string) => {
-    setToast({ visible: true, message, type: "success" });
-  }, []);
-
-  const openActionSheet = useCallback((resume: Resume) => {
-    setSelectedResume(resume);
-    setActionSheetVisible(true);
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-  }, []);
-
-  const handleDuplicate = useCallback(async () => {
-    if (!selectedResume) return;
-    await duplicateResume(selectedResume.id);
-    showToast("Resume duplicated");
-  }, [selectedResume, duplicateResume, showToast]);
-
-  const handleRename = useCallback(
-    async (newName: string) => {
-      if (!selectedResume) return;
-      await renameResume(selectedResume.id, newName);
-      showToast("Resume renamed");
-    },
-    [selectedResume, renameResume, showToast],
+  const sorted = useMemo(
+    () =>
+      [...(resumes ?? [])].sort(
+        (a, b) =>
+          new Date(b.updatedAt ?? 0).getTime() -
+          new Date(a.updatedAt ?? 0).getTime(),
+      ),
+    [resumes],
   );
 
-  const handleExportPdf = useCallback(async () => {
-    if (!selectedResume) return;
-    try {
-      await exportResumeToPdf(selectedResume);
-      showToast("Resume exported as PDF");
-    } catch (e) {
-      Alert.alert("Export Error", "Failed to export PDF.");
-    }
-  }, [selectedResume, showToast]);
-
-  const handleExportRtf = useCallback(async () => {
-    if (!selectedResume) return;
-    try {
-      await exportResumeToRtf(selectedResume);
-      showToast("Resume exported as RTF");
-    } catch (e) {
-      Alert.alert("Export Error", "Failed to export RTF.");
-    }
-  }, [selectedResume, showToast]);
-
-  const handleDelete = useCallback(() => {
-    if (!selectedResume) return;
-
+  const handleDelete = (item: any) => {
     Alert.alert(
-      "Delete Resume",
-      `Are you sure you want to delete "${selectedResume.title}"?`,
+      "Delete Resume?",
+      `"${item.title ?? "Untitled"}" will be permanently deleted.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await deleteResume(selectedResume.id);
-            showToast("Resume deleted");
+            try {
+              await (deleteResume as any)(item.id);
+            } catch (e: any) {
+              Alert.alert("Delete failed", e?.message);
+            }
           },
         },
       ],
     );
-  }, [selectedResume, deleteResume, showToast]);
+  };
 
-  const handleMoveToFolder = useCallback(
-    async (folderId: string) => {
-      if (!selectedResume) return;
-      await moveResumeToFolder(selectedResume.id, folderId);
-      const folder = folders.find((f) => f.id === folderId);
-      showToast(`Moved to ${folder?.name ?? "folder"}`);
-    },
-    [selectedResume, moveResumeToFolder, folders, showToast],
-  );
+  const goToViewer = (item: any) => {
+    router.push({
+      pathname: "/resume-viewer",
+      params: { id: item.id },
+    } as never);
+  };
 
-  const handleRemoveFromFolder = useCallback(async () => {
-    if (!selectedResume) return;
-    await moveResumeToFolder(selectedResume.id, undefined);
-    showToast("Removed from folder");
-  }, [selectedResume, moveResumeToFolder, showToast]);
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <StatusBar
+        barStyle={mode === "dark" ? "light-content" : "dark-content"}
+      />
 
-  const handleCreateFolder = useCallback(
-    async (name: string, color: string) => {
-      await addFolder(name, color);
-      showToast(`Folder "${name}" created`);
-    },
-    [addFolder, showToast],
-  );
+      {/* Header */}
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          Resumes
+        </Text>
 
-  const actions: ActionSheetAction[] = useMemo(
-    () => [
-      {
-        label: "Duplicate",
-        icon: "duplicate" as const,
-        onPress: handleDuplicate,
-      },
-      {
-        label: "Rename",
-        icon: "rename" as const,
-        onPress: () => setRenameVisible(true),
-      },
-      {
-        label: "Move to Folder",
-        icon: "folder" as const,
-        onPress: () => setFolderPickerVisible(true),
-      },
-      {
-        label: "Export PDF",
-        icon: "export" as const,
-        onPress: handleExportPdf,
-      },
-      {
-        label: "Export RTF",
-        icon: "export-rtf" as const,
-        onPress: handleExportRtf,
-      },
-      {
-        label: "Delete",
-        icon: "delete" as const,
-        destructive: true,
-        onPress: handleDelete,
-      },
-    ],
-    [handleDuplicate, handleExportPdf, handleExportRtf, handleDelete],
-  );
-
-  const getFolderForResume = useCallback(
-    (folderId?: string) => {
-      if (!folderId) return null;
-      return folders.find((f) => f.id === folderId) ?? null;
-    },
-    [folders],
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: Resume }) => {
-      const folder = getFolderForResume(item.folder);
-
-      return (
-        <TouchableOpacity
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.border,
-              shadowColor: colors.cardShadow,
-            },
-          ]}
-          onPress={() =>
-            router.push({
-              pathname: "/resume-editor" as never,
-              params: { id: item.id },
-            })
-          }
-          onLongPress={() => openActionSheet(item)}
-          activeOpacity={0.7}
-        >
-          <View style={styles.cardTop}>
-            <View
-              style={[
-                styles.cardIcon,
-                { backgroundColor: colors.accent + "1A" },
-              ]}
-            >
-              {item.uploadedFile ? (
-                <Upload color={colors.accent} size={20} />
-              ) : (
-                <FileText color={colors.accent} size={20} />
-              )}
-            </View>
-
-            <View style={styles.cardInfo}>
-              <Text
-                style={[styles.cardTitle, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {item.title}
-              </Text>
-
-              <Text style={[styles.cardMeta, { color: colors.textTertiary }]}>
-                Updated {formatDate(item.updatedAt)}
-              </Text>
-
-              {folder && (
-                <View style={styles.folderTag}>
-                  <FolderOpen color={folder.color} size={11} />
-                  <Text style={[styles.folderTagText, { color: folder.color }]}>
-                    {folder.name}
-                  </Text>
-                </View>
-              )}
-            </View>
-
+        <View style={styles.headerRight}>
+          <View
+            style={[
+              styles.toggleWrap,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
+          >
             <TouchableOpacity
+              onPress={() => setViewMode("list")}
               style={[
-                styles.moreBtn,
-                { backgroundColor: colors.surfacePressed },
+                styles.toggleBtn,
+                viewMode === "list" && { backgroundColor: colors.accent },
               ]}
-              onPress={() => openActionSheet(item)}
             >
-              <MoreVertical color={colors.textTertiary} size={18} />
+              <Ionicons
+                name="list-outline"
+                size={16}
+                color={
+                  viewMode === "list"
+                    ? (colors.accentText ?? "#fff")
+                    : colors.textSecondary
+                }
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setViewMode("grid")}
+              style={[
+                styles.toggleBtn,
+                viewMode === "grid" && { backgroundColor: colors.accent },
+              ]}
+            >
+              <Ionicons
+                name="grid-outline"
+                size={16}
+                color={
+                  viewMode === "grid"
+                    ? (colors.accentText ?? "#fff")
+                    : colors.textSecondary
+                }
+              />
             </TouchableOpacity>
           </View>
 
-          <View
-            style={[styles.glowLine, { backgroundColor: colors.accent + "22" }]}
-          />
-        </TouchableOpacity>
-      );
-    },
-    [colors, router, openActionSheet, getFolderForResume],
-  );
-
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: "Resumes",
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-          headerTitleStyle: { color: colors.text },
-          headerTintColor: colors.accent,
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{ paddingHorizontal: 12, paddingVertical: 6 }}
-            >
-              <ArrowLeft color={colors.accent} size={22} />
-            </TouchableOpacity>
-          ),
-        }}
-      />
-
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.searchWrap}>
-          <SearchBar
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search resumes..."
-          />
+          <TouchableOpacity
+            onPress={() => router.push("/resume-editor" as never)}
+            style={[styles.newBtn, { backgroundColor: colors.accent }]}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="add"
+              size={18}
+              color={colors.accentText ?? "#fff"}
+            />
+          </TouchableOpacity>
         </View>
+      </View>
 
+      {sorted.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons
+            name="document-text-outline"
+            size={48}
+            color={colors.textTertiary}
+          />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>
+            No resumes yet
+          </Text>
+          <Text style={[styles.emptySub, { color: colors.textTertiary }]}>
+            Tap + to create your first resume
+          </Text>
+        </View>
+      ) : viewMode === "list" ? (
         <FlatList
-          data={filtered}
+          key="list"
+          data={sorted}
           keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <ListCard
+              item={item}
+              colors={colors}
+              onPress={() => goToViewer(item)}
+              onDelete={() => handleDelete(item)}
+            />
+          )}
+          contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
         />
-
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.accent }]}
-          onPress={() => router.push("/resume-editor" as never)}
-        >
-          <Plus color={colors.accentText} size={24} />
-        </TouchableOpacity>
-
-        <ActionSheet
-          visible={actionSheetVisible}
-          title={selectedResume?.title ?? ""}
-          actions={actions}
-          onClose={() => setActionSheetVisible(false)}
+      ) : (
+        <FlatList
+          key="grid"
+          data={sorted}
+          keyExtractor={(item) => item.id}
+          numColumns={2}
+          renderItem={({ item }) => (
+            <GridCard
+              item={item}
+              colors={colors}
+              onPress={() => goToViewer(item)}
+              onDelete={() => handleDelete(item)}
+            />
+          )}
+          contentContainerStyle={styles.gridContainer}
+          columnWrapperStyle={styles.gridRow}
+          showsVerticalScrollIndicator={false}
         />
-
-        <RenameModal
-          visible={renameVisible}
-          currentName={selectedResume?.title ?? ""}
-          onRename={handleRename}
-          onClose={() => setRenameVisible(false)}
-        />
-
-        <FolderPicker
-          visible={folderPickerVisible}
-          folders={folders}
-          currentFolder={selectedResume?.folder}
-          onSelect={handleMoveToFolder}
-          onCreateFolder={handleCreateFolder}
-          onRemoveFromFolder={handleRemoveFromFolder}
-          onClose={() => setFolderPickerVisible(false)}
-        />
-
-        <Toast
-          visible={toast.visible}
-          message={toast.message}
-          type={toast.type}
-          onDismiss={() => setToast((t) => ({ ...t, visible: false }))}
-        />
-      </View>
-    </>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  searchWrap: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 },
-  list: { padding: 20, paddingTop: 0, paddingBottom: 120 },
-  card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
+  safe: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  cardTop: { flexDirection: "row", alignItems: "center", gap: 12 },
-  cardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+  headerTitle: { fontSize: 28, fontWeight: "800" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  toggleWrap: {
+    flexDirection: "row",
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  toggleBtn: {
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardInfo: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: "600" as const },
-  cardMeta: { fontSize: 12, marginTop: 2 },
-  folderTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 4,
-  },
-  folderTagText: { fontSize: 11, fontWeight: "500" as const },
-  moreBtn: {
+  newBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  glowLine: {
-    height: 2,
-    borderRadius: 1,
-    marginTop: 14,
-    marginHorizontal: -16,
-    marginBottom: -16,
+  listContainer: { padding: 18, gap: 10 },
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
   },
-  fab: {
-    position: "absolute",
-    right: 20,
-    bottom: 22,
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+  listIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
-    elevation: 7,
   },
+  listInfo: { flex: 1 },
+  listTitle: { fontSize: 14, fontWeight: "700" },
+  listMeta: { fontSize: 12, marginTop: 2 },
+  listActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  listIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridContainer: { padding: 18, paddingBottom: 40 },
+  gridRow: { gap: 12, marginBottom: 12 },
+  gridCard: { flex: 1, borderWidth: 1, borderRadius: 16, padding: 14 },
+  gridTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+  gridInitialWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridInitial: { fontSize: 16, fontWeight: "800" },
+  gridIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridTitle: { fontSize: 13, fontWeight: "700", marginBottom: 2 },
+  gridSub: { fontSize: 12, marginBottom: 4 },
+  gridDate: { fontSize: 11, marginBottom: 8 },
+  gridSkillRow: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
+  gridSkillText: { fontSize: 11 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: "700", marginTop: 8 },
+  emptySub: { fontSize: 14 },
 });

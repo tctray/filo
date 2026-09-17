@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+// providers/AuthProvider.tsx
+import { supabase } from "@/lib/supabase";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export type LoginPayload = { email: string; password: string };
 export type RegisterPayload = {
@@ -6,11 +14,11 @@ export type RegisterPayload = {
   password: string;
   name?: string;
 };
-
-export type AuthUser = { email: string; name?: string };
+export type AuthUser = { id: string; email: string; name?: string };
 
 export type AuthContextValue = {
   user: AuthUser | null;
+  isReady: boolean; // true once session check is complete
 
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
@@ -23,21 +31,53 @@ export type AuthContextValue = {
   loginError: string | null;
   registerError: string | null;
 
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-
+  const [isReady, setIsReady] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isGuestLoggingIn, setIsGuestLoggingIn] = useState(false);
-
   const [loginError, setLoginError] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
+  // ── Restore session on mount ──
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      const s = data.session;
+      if (s?.user) {
+        setUser({
+          id: s.user.id,
+          email: s.user.email ?? "",
+          name: s.user.user_metadata?.name,
+        });
+      }
+      setIsReady(true);
+    });
+
+    // Keep in sync with Supabase auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email ?? "",
+            name: session.user.user_metadata?.name,
+          });
+        } else {
+          setUser(null);
+        }
+      },
+    );
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // ── Login ──
   const login = async ({ email, password }: LoginPayload) => {
     try {
       setIsLoggingIn(true);
@@ -46,10 +86,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!email?.trim()) throw new Error("Email required");
       if (!password?.trim()) throw new Error("Password required");
 
-      // Fake network delay
-      await new Promise((res) => setTimeout(res, 600));
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
-      setUser({ email: email.trim() });
+      if (error) throw new Error(error.message);
     } catch (err: any) {
       const msg = err?.message || "Login failed";
       setLoginError(msg);
@@ -59,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ── Register ──
   const register = async ({ email, password, name }: RegisterPayload) => {
     try {
       setIsRegistering(true);
@@ -67,10 +110,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!email?.trim()) throw new Error("Email required");
       if (!password?.trim()) throw new Error("Password required");
 
-      // Fake network delay
-      await new Promise((res) => setTimeout(res, 600));
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password.trim(),
+        options: { data: { name: name?.trim() } },
+      });
 
-      setUser({ email: email.trim(), name: name?.trim() || undefined });
+      if (error) throw new Error(error.message);
     } catch (err: any) {
       const msg = err?.message || "Registration failed";
       setRegisterError(msg);
@@ -80,17 +126,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ── Guest login (anonymous Supabase session) ──
   const guestLogin = async () => {
     try {
       setIsGuestLoggingIn(true);
       setLoginError(null);
       setRegisterError(null);
 
-      await new Promise((res) => setTimeout(res, 400));
-
-      setUser({ email: "guest@filo.app", name: "Guest" });
-    } catch {
-      const msg = "Guest login failed";
+      const { error } = await supabase.auth.signInAnonymously();
+      if (error) throw new Error(error.message);
+    } catch (err: any) {
+      const msg = err?.message || "Guest login failed";
       setLoginError(msg);
       throw new Error(msg);
     } finally {
@@ -98,11 +144,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => setUser(null);
+  // ── Logout ──
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      isReady,
       login,
       register,
       guestLogin,
@@ -115,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       user,
+      isReady,
       isLoggingIn,
       isRegistering,
       isGuestLoggingIn,
@@ -128,6 +180,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
   return ctx;
 }

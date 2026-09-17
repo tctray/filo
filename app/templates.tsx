@@ -1,10 +1,8 @@
-import { coverLetterTemplates, resumeTemplates } from "@/mocks/templates";
-import { useData } from "@/providers/DataProvider";
-import { useTheme } from "@/providers/ThemeProvider";
-import { Stack, useRouter } from "expo-router";
-import { ArrowLeft, ArrowRight, FileText, Mail } from "lucide-react-native";
+// app/templates.tsx
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React from "react";
 import {
-  Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -13,200 +11,139 @@ import {
   View,
 } from "react-native";
 
+import { coverLetterTemplates, resumeTemplates } from "@/constants/templates";
+import { useTheme } from "@/providers/ThemeProvider";
+
+function SectionHeader({ title, colors }: { title: string; colors: any }) {
+  return (
+    <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>
+      {title}
+    </Text>
+  );
+}
+
+function TemplateCard({
+  icon,
+  iconColor,
+  iconBg,
+  title,
+  subtitle,
+  onPress,
+  colors,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  iconBg: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  colors: any;
+}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[
+        styles.card,
+        { backgroundColor: colors.surface, borderColor: colors.border },
+      ]}
+    >
+      <View style={styles.left}>
+        <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
+          <Ionicons name={icon} size={18} color={iconColor} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.title, { color: colors.text }]}
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+          <Text
+            style={[styles.meta, { color: colors.textSecondary }]}
+            numberOfLines={1}
+          >
+            {subtitle}
+          </Text>
+        </View>
+      </View>
+
+      <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+}
+
 export default function TemplatesScreen() {
   const { colors } = useTheme();
-  const { addResume, addCoverLetter } = useData();
   const router = useRouter();
-
-  const handleUseResumeTemplate = async (idx: number) => {
-    const template = resumeTemplates[idx];
-    const created = await addResume({
-      ...template,
-      isDraft: true,
-      title: `${template.title}`,
-    });
-    if (created) {
-      Alert.alert(
-        "Template Applied",
-        `"${template.title}" has been created. You can now edit it.`,
-        [
-          {
-            text: "Edit Now",
-            onPress: () =>
-              router.replace({
-                pathname: "/resume-editor" as never,
-                params: { id: created.id },
-              }),
-          },
-          { text: "Later", style: "cancel", onPress: () => router.back() },
-        ],
-      );
-    }
-  };
-
-  const handleUseCoverLetterTemplate = async (idx: number) => {
-    const template = coverLetterTemplates[idx];
-    const created = await addCoverLetter({
-      ...template,
-      title: `${template.title}`,
-    });
-    if (created) {
-      Alert.alert(
-        "Template Applied",
-        `"${template.title}" has been created. You can now edit it.`,
-        [
-          {
-            text: "Edit Now",
-            onPress: () =>
-              router.replace({
-                pathname: "/cover-letter-editor" as never,
-                params: { id: created.id },
-              }),
-          },
-          { text: "Later", style: "cancel", onPress: () => router.back() },
-        ],
-      );
-    }
-  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* ── Custom top bar ── */}
-      <View
-        style={[
-          styles.topBar,
-          {
-            borderBottomColor: colors.border,
-            backgroundColor: colors.background,
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={styles.backBtn}
-        >
-          <ArrowLeft color={colors.text} size={22} />
+      {/* Top bar */}
+      <View style={[styles.topBar, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.topBtn}>
+          <Ionicons name="arrow-back" size={22} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.topBarTitle, { color: colors.text }]}>
-          Templates
-        </Text>
-        {/* Spacer to keep title centered */}
-        <View style={styles.backBtn} />
+
+        <Text style={[styles.topTitle, { color: colors.text }]}>Templates</Text>
+
+        <View style={styles.topBtn} />
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.inner}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Resume Templates
-          </Text>
-          <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
-            Start with a pre-filled template and customize it to your needs
-          </Text>
+        {/* RESUME TEMPLATES */}
+        <SectionHeader title="RESUME TEMPLATES" colors={colors} />
+        {resumeTemplates.map((t) => (
+          <TemplateCard
+            key={t.templateId}
+            icon="document-text-outline"
+            iconColor={colors.accent}
+            iconBg={colors.accent + "18"}
+            title={t.title}
+            subtitle="Tap to create a new resume"
+            onPress={() =>
+              router.push({
+                pathname: "/resume-editor",
+                params: { templateId: t.templateId },
+              } as never)
+            }
+            colors={colors}
+          />
+        ))}
 
-          {resumeTemplates.map((tmpl, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.templateCard,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-              onPress={() => handleUseResumeTemplate(idx)}
-              activeOpacity={0.7}
-            >
-              <View
-                style={[
-                  styles.templateIcon,
-                  { backgroundColor: colors.accentLight },
-                ]}
-              >
-                <FileText color={colors.accent} size={22} />
-              </View>
-              <View style={styles.templateInfo}>
-                <Text style={[styles.templateTitle, { color: colors.text }]}>
-                  {tmpl.title}
-                </Text>
-                <Text
-                  style={[styles.templateMeta, { color: colors.textTertiary }]}
-                >
-                  {tmpl.experience.length} experience · {tmpl.skills.length}{" "}
-                  skills
-                  {tmpl.education.length > 0
-                    ? ` · ${tmpl.education.length} education`
-                    : ""}
-                </Text>
-              </View>
-              <ArrowRight color={colors.textTertiary} size={18} />
-            </TouchableOpacity>
-          ))}
+        <View style={{ height: 14 }} />
 
-          <View style={styles.divider} />
+        {/* COVER LETTER TEMPLATES */}
+        <SectionHeader title="COVER LETTER TEMPLATES" colors={colors} />
+        {coverLetterTemplates.map((t) => (
+          <TemplateCard
+            key={t.templateId}
+            icon="mail-outline"
+            iconColor={colors.info ?? colors.accent}
+            iconBg={(colors.info ?? colors.accent) + "18"}
+            title={t.title}
+            subtitle={
+              t.tone === "formal"
+                ? "Professional"
+                : t.tone === "bold"
+                  ? "Bold"
+                  : "Confident"
+            }
+            onPress={() =>
+              router.push({
+                pathname: "/coverletter-editor",
+                params: { templateId: t.templateId },
+              } as never)
+            }
+            colors={colors}
+          />
+        ))}
 
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Cover Letter Templates
-          </Text>
-          <Text style={[styles.sectionDesc, { color: colors.textSecondary }]}>
-            Choose a tone and style that matches your personality
-          </Text>
-
-          {coverLetterTemplates.map((tmpl, idx) => {
-            const toneColors: Record<string, string> = {
-              formal: colors.info,
-              confident: colors.warning,
-              bold: colors.statusInterview,
-            };
-            const toneBgColors: Record<string, string> = {
-              formal: colors.infoLight,
-              confident: colors.warningLight,
-              bold: colors.successLight,
-            };
-            return (
-              <TouchableOpacity
-                key={idx}
-                style={[
-                  styles.templateCard,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => handleUseCoverLetterTemplate(idx)}
-                activeOpacity={0.7}
-              >
-                <View
-                  style={[
-                    styles.templateIcon,
-                    { backgroundColor: toneBgColors[tmpl.tone] },
-                  ]}
-                >
-                  <Mail color={toneColors[tmpl.tone]} size={22} />
-                </View>
-                <View style={styles.templateInfo}>
-                  <Text style={[styles.templateTitle, { color: colors.text }]}>
-                    {tmpl.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.templateMeta,
-                      { color: colors.textTertiary },
-                    ]}
-                  >
-                    {tmpl.tone.charAt(0).toUpperCase() + tmpl.tone.slice(1)}{" "}
-                    tone · {tmpl.company}
-                  </Text>
-                </View>
-                <ArrowRight color={colors.textTertiary} size={18} />
-              </TouchableOpacity>
-            );
-          })}
-
-          <View style={styles.bottomPad} />
-        </View>
+        <View style={{ height: 24 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -214,61 +151,54 @@ export default function TemplatesScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-
-  // Custom top bar
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
+  topBtn: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
   },
-  topBarTitle: {
+  topTitle: {
     flex: 1,
     textAlign: "center",
     fontSize: 16,
     fontWeight: "800",
   },
+  scroll: { padding: 18, paddingTop: 14, paddingBottom: 30 },
 
-  scroll: {
-    paddingVertical: 20,
-  },
-  // Centers content on wide screens, fills on phones
-  inner: {
-    paddingHorizontal: 20,
-    maxWidth: 600,
-    width: "100%",
-    alignSelf: "center",
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+    marginBottom: 10,
+    marginTop: 6,
+    marginLeft: 2,
   },
 
-  sectionTitle: { fontSize: 20, fontWeight: "700", marginBottom: 4 },
-  sectionDesc: { fontSize: 14, marginBottom: 16, lineHeight: 20 },
-  templateCard: {
+  card: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
+    justifyContent: "space-between",
     marginBottom: 10,
-    gap: 14,
   },
-  templateIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+  left: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  templateInfo: { flex: 1 },
-  templateTitle: { fontSize: 15, fontWeight: "600" },
-  templateMeta: { fontSize: 12, marginTop: 2 },
-  divider: { height: 32 },
-  bottomPad: { height: 40 },
+  title: { fontSize: 14, fontWeight: "800" },
+  meta: { fontSize: 12, marginTop: 3 },
 });

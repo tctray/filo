@@ -1,11 +1,18 @@
+import {
+  saveAvatarUrlToProfile,
+  uploadAvatarForCurrentUser,
+} from "@/lib/avatarUpload";
 import { useAuth } from "@/providers/AuthProvider";
 import { useTheme } from "@/providers/ThemeProvider";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { ArrowRight, FileText } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { ArrowRight, Camera, FileText } from "lucide-react-native";
+import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,6 +22,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+const AVATAR_SIZE = 88;
 
 export default function RegisterScreen() {
   const { colors } = useTheme();
@@ -26,20 +35,62 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [localError, setLocalError] = useState("");
+  const [pickingImage, setPickingImage] = useState(false);
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   const buttonScale = useRef(new Animated.Value(1)).current;
+
+  const initials = useMemo(() => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "F";
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() || "F";
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+  }, [name]);
 
   const handlePressIn = () =>
     Animated.spring(buttonScale, {
       toValue: 0.96,
       useNativeDriver: true,
     }).start();
+
   const handlePressOut = () =>
     Animated.spring(buttonScale, {
       toValue: 1,
       friction: 3,
       useNativeDriver: true,
     }).start();
+
+  const pickAvatar = async () => {
+    try {
+      setPickingImage(true);
+
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(
+          "Permission needed",
+          "Allow Filo to access your photos to set a profile picture.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      setAvatarUri(result.assets[0].uri);
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error ? e.message : "Could not open photo library.";
+      Alert.alert("Error", msg);
+    } finally {
+      setPickingImage(false);
+    }
+  };
 
   const handleRegister = async () => {
     setLocalError("");
@@ -48,10 +99,12 @@ export default function RegisterScreen() {
       setLocalError("Please fill in all fields");
       return;
     }
+
     if (password !== confirm) {
       setLocalError("Passwords do not match");
       return;
     }
+
     if (password.length < 6) {
       setLocalError("Password must be at least 6 characters");
       return;
@@ -63,8 +116,14 @@ export default function RegisterScreen() {
         password,
         name: name.trim() || undefined,
       });
-      // ✅ Account created — go straight to the app
-      router.replace("/" as never);
+
+      if (avatarUri) {
+        const { publicUrl } = await uploadAvatarForCurrentUser(avatarUri);
+        await saveAvatarUrlToProfile(publicUrl);
+        setAvatarUri(publicUrl);
+      }
+
+      router.replace("/(tabs)" as never);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Registration failed";
       setLocalError(msg);
@@ -82,6 +141,7 @@ export default function RegisterScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
             <View
@@ -99,6 +159,60 @@ export default function RegisterScreen() {
             <Text style={[styles.formTitle, { color: colors.text }]}>
               Create account
             </Text>
+
+            <View style={styles.avatarSection}>
+              <TouchableOpacity
+                onPress={pickAvatar}
+                activeOpacity={0.8}
+                style={[
+                  styles.avatarRing,
+                  {
+                    borderColor: `${colors.accent}55`,
+                    backgroundColor: colors.surface ?? colors.inputBackground,
+                  },
+                ]}
+              >
+                {pickingImage ? (
+                  <ActivityIndicator color={colors.accent} size="large" />
+                ) : avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={styles.avatarImage}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatarPlaceholder,
+                      { backgroundColor: `${colors.accent}18` },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.avatarInitials, { color: colors.accent }]}
+                    >
+                      {initials}
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[
+                    styles.cameraBadge,
+                    {
+                      backgroundColor: colors.accent,
+                      borderColor: colors.background,
+                    },
+                  ]}
+                >
+                  <Camera size={13} color="#fff" strokeWidth={2.5} />
+                </View>
+              </TouchableOpacity>
+
+              <Text
+                style={[styles.avatarHint, { color: colors.textSecondary }]}
+              >
+                Add profile photo
+              </Text>
+            </View>
 
             {errorMsg ? (
               <View
@@ -223,7 +337,6 @@ export default function RegisterScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ✅ Already have an account → back to login */}
             <TouchableOpacity
               style={styles.linkRow}
               onPress={() => router.replace("/login" as never)}
@@ -251,7 +364,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     paddingVertical: 40,
   },
-  header: { alignItems: "center", marginBottom: 40 },
+
+  header: { alignItems: "center", marginBottom: 32 },
   logoContainer: {
     width: 64,
     height: 64,
@@ -262,10 +376,60 @@ const styles = StyleSheet.create({
   },
   appName: { fontSize: 28, fontWeight: "700", letterSpacing: -0.5 },
   tagline: { fontSize: 14, marginTop: 6, textAlign: "center" },
+
   form: { width: "100%" },
   formTitle: { fontSize: 22, fontWeight: "600", marginBottom: 20 },
+
+  avatarSection: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  avatarRing: {
+    width: AVATAR_SIZE + 8,
+    height: AVATAR_SIZE + 8,
+    borderRadius: (AVATAR_SIZE + 8) / 2,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    position: "relative",
+  },
+  avatarImage: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+  },
+  avatarPlaceholder: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitials: {
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -1,
+  },
+  cameraBadge: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+  },
+  avatarHint: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+
   errorBox: { padding: 12, borderRadius: 10, marginBottom: 16 },
   errorText: { fontSize: 13, fontWeight: "500" },
+
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: "500", marginBottom: 6 },
   input: {
@@ -275,6 +439,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     borderWidth: 1,
   },
+
   button: {
     height: 52,
     borderRadius: 14,
@@ -284,6 +449,7 @@ const styles = StyleSheet.create({
   },
   buttonContent: { flexDirection: "row", alignItems: "center", gap: 8 },
   buttonText: { fontSize: 16, fontWeight: "600" },
+
   linkRow: { flexDirection: "row", justifyContent: "center", marginTop: 24 },
   linkText: { fontSize: 14 },
   linkAccent: { fontSize: 14, fontWeight: "600" },

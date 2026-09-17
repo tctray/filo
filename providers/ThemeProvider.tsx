@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useMemo } from "react";
+// providers/ThemeProvider.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+} from "react";
 
 export type ThemeColors = {
   background: string;
@@ -6,23 +14,18 @@ export type ThemeColors = {
   surfacePressed: string;
   border: string;
   inputBackground: string;
-
   text: string;
   textSecondary: string;
   textTertiary: string;
-
   accent: string;
   accentText: string;
   accentLight: string;
-
   cardShadow: string;
-
   statusSaved: string;
   statusApplied: string;
   statusInterview: string;
   statusOffer: string;
   statusRejected: string;
-
   info: string;
   infoLight: string;
   warning: string;
@@ -33,30 +36,24 @@ export type ThemeColors = {
   successLight: string;
 };
 
-// ── Charcoal dark (was "defaultColors", now the real dark palette) ──
 const darkColors: ThemeColors = {
   background: "#121212",
   surface: "#1C1C1C",
   surfacePressed: "#242424",
   border: "#2E2E2E",
   inputBackground: "#1A1A1A",
-
   text: "#F5F5F5",
   textSecondary: "#B3B3B3",
   textTertiary: "#808080",
-
   accent: "#2DD4BF",
   accentText: "#051614",
   accentLight: "rgba(45,212,191,0.18)",
-
   cardShadow: "rgba(0,0,0,0.65)",
-
   statusSaved: "#9CA3AF",
   statusApplied: "#60A5FA",
   statusInterview: "#A78BFA",
   statusOffer: "#34D399",
   statusRejected: "#F87171",
-
   info: "#60A5FA",
   infoLight: "rgba(96,165,250,0.16)",
   warning: "#FBBF24",
@@ -73,23 +70,18 @@ const lightColors: ThemeColors = {
   surfacePressed: "#F2F4F7",
   border: "#E5E7EB",
   inputBackground: "#F3F4F6",
-
   text: "#111827",
   textSecondary: "#4B5563",
   textTertiary: "#9CA3AF",
-
   accent: "#6EE7B7",
   accentText: "#111827",
   accentLight: "#BFF3DE",
-
   cardShadow: "rgba(0,0,0,0.18)",
-
   statusSaved: "#6B7280",
   statusApplied: "#3B82F6",
   statusInterview: "#A855F7",
   statusOffer: "#10B981",
   statusRejected: "#EF4444",
-
   info: "#3B82F6",
   infoLight: "#DBEAFE",
   warning: "#F59E0B",
@@ -101,7 +93,6 @@ const lightColors: ThemeColors = {
 };
 
 type ThemeMode = "light" | "dark";
-
 type ThemeContextValue = {
   colors: ThemeColors;
   mode: ThemeMode;
@@ -109,22 +100,38 @@ type ThemeContextValue = {
   setMode: (mode: ThemeMode) => void;
 };
 
+const THEME_KEY = "filo_theme_v1";
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = React.useState<ThemeMode>("dark");
+  const [mode, setModeState] = React.useState<ThemeMode>("dark");
 
-  const colors = useMemo<ThemeColors>(() => {
-    return mode === "dark" ? darkColors : lightColors;
-  }, [mode]);
+  // Load persisted theme on mount
+  useEffect(() => {
+    AsyncStorage.getItem(THEME_KEY)
+      .then((saved) => {
+        if (saved === "light" || saved === "dark") setModeState(saved);
+      })
+      .catch(() => {});
+  }, []);
+
+  const setMode = useCallback((m: ThemeMode) => {
+    setModeState(m);
+    AsyncStorage.setItem(THEME_KEY, m).catch(() => {});
+  }, []);
 
   const toggleTheme = useCallback(() => {
-    setMode((m) => (m === "dark" ? "light" : "dark"));
-  }, []);
+    setMode(mode === "dark" ? "light" : "dark");
+  }, [mode, setMode]);
+
+  const colors = useMemo<ThemeColors>(
+    () => (mode === "dark" ? darkColors : lightColors),
+    [mode],
+  );
 
   const value = useMemo<ThemeContextValue>(
     () => ({ colors, mode, toggleTheme, setMode }),
-    [colors, mode, toggleTheme],
+    [colors, mode, toggleTheme, setMode],
   );
 
   return (

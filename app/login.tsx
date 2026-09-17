@@ -1,11 +1,12 @@
 import { useAuth } from "@/providers/AuthProvider";
 import { useTheme } from "@/providers/ThemeProvider";
 import { useRouter } from "expo-router";
-import { ArrowRight, FileText } from "lucide-react-native";
+import { ArrowRight } from "lucide-react-native";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -77,10 +78,12 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <View
-              style={[styles.logoContainer, { backgroundColor: colors.accent }]}
-            >
-              <FileText color={colors.accentText} size={32} />
+            <View style={[styles.logoContainer, {}]}>
+              <Image
+                source={require("../assets/images/icon.png")}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={[styles.appName, { color: colors.text }]}>Filo</Text>
             <Text style={[styles.tagline, { color: colors.textSecondary }]}>
@@ -177,7 +180,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </Animated.View>
 
-            {/* ✅ Sign Up link → register page */}
+            {/* Sign Up link → onboarding */}
             <TouchableOpacity
               style={styles.linkRow}
               onPress={() => router.push("/register" as never)}
@@ -234,6 +237,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 28,
     paddingVertical: 40,
+  },
+  logoImage: {
+    width: 75,
+    height: 75,
   },
   header: { alignItems: "center", marginBottom: 40 },
   logoContainer: {
