@@ -3,10 +3,11 @@
 // Free, offline text extraction.
 //   TXT  → read directly
 //   RTF  → strip control words, decode escapes
-//   DOCX → scan ZIP for word/document.xml, strip XML tags
+//   DOCX → unzip with JSZip, read word/document.xml, strip XML tags
 //   PDF  → not supported; shows a tip to export as .txt
 
 import * as FileSystem from "expo-file-system/legacy";
+import JSZip from "jszip";
 import { Platform } from "react-native";
 
 // ─────────────────────────────────────────────
@@ -77,76 +78,51 @@ function extractRtfText(base64: string): string {
 }
 
 // ─────────────────────────────────────────────
-// DOCX extraction (fully local)
+// DOCX extraction — properly decompresses the ZIP with JSZip, since
+// DOCX files use DEFLATE compression internally which a raw byte scan
+// (the old approach) cannot read; it only produced garbled text that
+// silently failed to match anything.
 // ─────────────────────────────────────────────
-function extractDocxText(base64: string): string {
+async function extractDocxTextAsync(base64: string): Promise<string> {
+  let zip: JSZip;
   try {
-    const binary = atob(base64);
-    let i = 0;
+    zip = await JSZip.loadAsync(base64, { base64: true });
+  } catch {
+    throw new Error(
+      "Couldn't open this DOCX file. It may be corrupted or not a valid Word document.",
+    );
+  }
 
-    while (i < binary.length - 30) {
-      // ZIP local file header: PK\x03\x04
-      if (
-        binary.charCodeAt(i) !== 0x50 ||
-        binary.charCodeAt(i + 1) !== 0x4b ||
-        binary.charCodeAt(i + 2) !== 0x03 ||
-        binary.charCodeAt(i + 3) !== 0x04
-      ) {
-        i++;
-        continue;
-      }
-
-      const compressedSize =
-        (binary.charCodeAt(i + 18) |
-          (binary.charCodeAt(i + 19) << 8) |
-          (binary.charCodeAt(i + 20) << 16) |
-          (binary.charCodeAt(i + 21) << 24)) >>>
-        0;
-      const fnLen =
-        binary.charCodeAt(i + 26) | (binary.charCodeAt(i + 27) << 8);
-      const extraLen =
-        binary.charCodeAt(i + 28) | (binary.charCodeAt(i + 29) << 8);
-      const dataStart = i + 30 + fnLen + extraLen;
-      const fileName = binary.slice(i + 30, i + 30 + fnLen);
-
-      if (fileName === "word/document.xml") {
-        const xml = binary.slice(dataStart, dataStart + compressedSize);
-        const text = xml
-          .replace(/<w:br[^>]*\/>/gi, "\n")
-          .replace(/<w:p[ >\/][^>]*>/gi, "\n")
-          .replace(/<[^>]+>/g, "")
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/&apos;/g, "'")
-          .replace(/[ \t]{2,}/g, " ")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
-
-        if (text.length > 30) return text;
-
-        throw new Error(
-          "This DOCX uses internal compression that can't be read on device.\n\nTip: Open in Word or Google Docs and export as .rtf or .txt, then upload that.",
-        );
-      }
-
-      i = dataStart + Math.max(compressedSize, 1);
-    }
-
+  const documentXmlFile = zip.file("word/document.xml");
+  if (!documentXmlFile) {
     throw new Error(
       "Couldn't find text in this DOCX.\n\nTip: Try exporting as .rtf or .txt from Word or Google Docs.",
     );
-  } catch (e: any) {
-    if (
-      e?.message?.startsWith("This DOCX") ||
-      e?.message?.startsWith("Couldn't find")
-    )
-      throw e;
+  }
+
+  const xml = await documentXmlFile.async("string");
+
+  const text = xml
+    .replace(/<w:tab\s*\/>/gi, "\t")
+    .replace(/<w:br\s*\/>/gi, "\n")
+    .replace(/<\/w:p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (text.length < 10) {
     throw new Error(
-      "Couldn't read the DOCX. Try uploading a .rtf or .txt file instead.",
+      "This DOCX doesn't seem to contain readable text.\n\nTip: Try exporting as .rtf or .txt from Word or Google Docs.",
     );
   }
+
+  return text;
 }
 
 // ─────────────────────────────────────────────
@@ -190,7 +166,7 @@ export async function extractTextFromFile(
   const base64 = await readAsBase64(uri);
 
   if (isRtf) return extractRtfText(base64);
-  if (isDocx) return extractDocxText(base64);
+  if (isDocx) return extractDocxTextAsync(base64);
 
   // Plain text (.txt etc.)
   return atob(base64)
