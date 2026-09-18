@@ -1,11 +1,3 @@
-// utils/parseDocument.ts
-//
-// Free, offline text extraction.
-//   TXT  → read directly
-//   RTF  → strip control words, decode escapes
-//   DOCX → unzip with JSZip, read word/document.xml, strip XML tags
-//   PDF  → not supported; shows a tip to export as .txt
-
 import * as FileSystem from "expo-file-system/legacy";
 import JSZip from "jszip";
 import { Platform } from "react-native";

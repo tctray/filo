@@ -1,11 +1,11 @@
 // app/(tabs)/resumes.tsx
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
+import { confirmAction, notify } from "@/utils/notify";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   SafeAreaView,
   StatusBar,
@@ -189,23 +189,16 @@ export default function ResumesTab() {
   );
 
   const handleDelete = (item: any) => {
-    Alert.alert(
+    confirmAction(
       "Delete Resume?",
       `"${item.title ?? "Untitled"}" will be permanently deleted.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await (deleteResume as any)(item.id);
-            } catch (e: any) {
-              Alert.alert("Delete failed", e?.message);
-            }
-          },
-        },
-      ],
+      async () => {
+        try {
+          await (deleteResume as any)(item.id);
+        } catch (e: any) {
+          notify("Delete failed", e?.message);
+        }
+      },
     );
   };
 
