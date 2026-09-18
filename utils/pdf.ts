@@ -1,6 +1,7 @@
 // utils/pdf.ts
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import { Platform } from "react-native";
 
 import type { CoverLetter, Resume } from "@/types";
 
@@ -139,10 +140,77 @@ function textToRtf(text: string) {
   return `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Arial;}}\\fs24 ${safe}}`;
 }
 
+/* ---------------- WEB-ONLY PDF DOWNLOAD ----------------
+ * expo-print's printToFileAsync() opens the browser's print dialog on
+ * web (documented Expo behavior) instead of producing a downloadable
+ * file. For a real one-click download on web, we lay the plain text
+ * out into a PDF client-side with jsPDF. Native platforms are
+ * completely untouched — this code only runs when Platform.OS === "web".
+ * ------------------------------------------------------- */
+function decodeHtmlEntities(text: string) {
+  return text
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#039;", "'");
+}
+
+async function downloadTextAsPdfWeb(title: string, bodyText: string) {
+  const { jsPDF } = await import("jspdf");
+
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const marginX = 54;
+  const pageWidth = 612; // US Letter, points
+  const pageHeight = 792;
+  const maxWidth = pageWidth - marginX * 2;
+  const lineHeight = 15;
+  let y = 64;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  const titleLines = doc.splitTextToSize(title || "Document", maxWidth);
+  for (const line of titleLines) {
+    doc.text(line, marginX, y);
+    y += 22;
+  }
+  y += 8;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+
+  const paragraphs = decodeHtmlEntities(bodyText).split("\n");
+  for (const para of paragraphs) {
+    if (para.trim() === "") {
+      y += lineHeight * 0.6;
+      continue;
+    }
+    const lines = doc.splitTextToSize(para, maxWidth);
+    for (const line of lines) {
+      if (y > pageHeight - 60) {
+        doc.addPage();
+        y = 64;
+      }
+      doc.text(line, marginX, y);
+      y += lineHeight;
+    }
+  }
+
+  const safeName = (title || "document").replace(/[^\w\- ]+/g, "").trim();
+  doc.save(`${safeName || "document"}.pdf`);
+}
+
 /* ---------------- EXPORTS ---------------- */
 
 export async function exportCoverLetterToPdf(letter: CoverLetter) {
   const html = coverLetterToHtml(letter);
+
+  if (Platform.OS === "web") {
+    const title = (letter as any).title ?? "Cover Letter";
+    await downloadTextAsPdfWeb(title, stripHtml(html));
+    return;
+  }
+
   const { uri } = await Print.printToFileAsync({ html });
   await Sharing.shareAsync(uri);
 }
@@ -165,6 +233,13 @@ export async function exportCoverLetterToRtf(letter: CoverLetter) {
 
 export async function exportResumeToPdf(resume: Resume) {
   const html = resumeToHtml(resume);
+
+  if (Platform.OS === "web") {
+    const title = (resume as any).title ?? "Resume";
+    await downloadTextAsPdfWeb(title, stripHtml(html));
+    return;
+  }
+
   const { uri } = await Print.printToFileAsync({ html });
   await Sharing.shareAsync(uri);
 }
