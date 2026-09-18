@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { FileText, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -21,6 +21,16 @@ import { v4 as uuidv4 } from "uuid";
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
 import { extractTextFromFile } from "@/utils/parseDocument";
+
+// Cross-platform alert: Alert.alert() is a silent no-op on web, so we
+// fall back to window.alert() there. Native keeps using Alert.alert().
+function notify(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 type ResumeDraft = {
   id?: string;
@@ -335,7 +345,7 @@ export default function ResumeEditorScreen() {
   useEffect(() => {
     if (!isEditing) return;
     if (!existingResume) {
-      Alert.alert("Not found", "That resume could not be loaded.");
+      notify("Not found", "That resume could not be loaded.");
       router.back();
       return;
     }
@@ -385,7 +395,7 @@ export default function ResumeEditorScreen() {
       );
 
       if (!text.trim()) {
-        Alert.alert("Couldn't read file", "Try a .docx, .rtf, or .txt file.");
+        notify("Couldn't read file", "Try a .docx, .rtf, or .txt file.");
         return;
       }
 
@@ -405,12 +415,12 @@ export default function ResumeEditorScreen() {
         experience: data.experience?.length ? data.experience : prev.experience,
       }));
 
-      Alert.alert(
+      notify(
         "Resume Parsed",
         "Fields filled from your file. Review and edit before saving.",
       );
     } catch (e: any) {
-      Alert.alert("Upload failed", e?.message ?? "Could not read the file.");
+      notify("Upload failed", e?.message ?? "Could not read the file.");
     } finally {
       setParsing(false);
     }
@@ -420,7 +430,7 @@ export default function ResumeEditorScreen() {
     try {
       const title = draft.title.trim();
       if (!title) {
-        Alert.alert("Missing title", "Please name your resume.");
+        notify("Missing title", "Please name your resume.");
         return;
       }
       setSaving(true);
@@ -447,7 +457,7 @@ export default function ResumeEditorScreen() {
       }
       router.back();
     } catch (e: any) {
-      Alert.alert("Submit failed", e?.message ?? "Could not save your resume.");
+      notify("Submit failed", e?.message ?? "Could not save your resume.");
     } finally {
       setSaving(false);
     }
@@ -1286,8 +1296,8 @@ const previewStyles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1.2,
     paddingBottom: 6,
-    borderBottomWidth: 1.5,
     marginBottom: 10,
+    borderBottomWidth: 1.5,
   },
   body: { fontSize: 13, lineHeight: 20 },
   roleBlock: { marginBottom: 12 },
