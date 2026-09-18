@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
+import { jsPDF } from "jspdf";
 import React, { useCallback, useState } from "react";
 import {
   ActionSheetIOS,
@@ -139,6 +140,137 @@ function buildResumeHtml(resume: any): string {
     </body></html>`;
 }
 
+// ─────────────────────────────────────────────
+// Web-only PDF export (expo-print opens a print dialog on web instead
+// of downloading a file, so we build a plain-text PDF client-side with
+// jsPDF here). Native platforms keep using buildResumeHtml + expo-print
+// + expo-sharing, untouched, below in handleExportPdf.
+// ─────────────────────────────────────────────
+function buildResumePdfText(resume: any): { title: string; text: string } {
+  const h = (resume.header ?? {}) as {
+    name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    links?: string[];
+  };
+  const experience = resume.experience ?? [];
+  const education = resume.education ?? [];
+  const skills: string[] = resume.skills ?? [];
+  const certifications = resume.certifications ?? [];
+  const projects = resume.projects ?? [];
+  const links: string[] = h.links ?? [];
+
+  const lines: string[] = [];
+  const contactParts = [h.email, h.phone, h.location, ...links].filter(Boolean);
+  if (contactParts.length) lines.push(contactParts.join("  ·  "));
+  lines.push("");
+
+  if (resume.summary?.trim()) {
+    lines.push("SUMMARY");
+    lines.push(resume.summary.trim());
+    lines.push("");
+  }
+
+  if (skills.filter(Boolean).length) {
+    lines.push("SKILLS");
+    lines.push(skills.filter(Boolean).join(", "));
+    lines.push("");
+  }
+
+  if (experience.length) {
+    lines.push("EXPERIENCE");
+    for (const exp of experience) {
+      const dates = [exp.startDate, exp.endDate].filter(Boolean).join(" – ");
+      lines.push(`${exp.title ?? ""}${dates ? "  (" + dates + ")" : ""}`);
+      if (exp.company) lines.push(exp.company);
+      for (const b of exp.bullets ?? []) {
+        if (b) lines.push(`• ${b}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (education.length) {
+    lines.push("EDUCATION");
+    for (const edu of education) {
+      const dates = [edu.startDate, edu.endDate].filter(Boolean).join(" – ");
+      lines.push(`${edu.institution ?? ""}${dates ? "  (" + dates + ")" : ""}`);
+      const sub = [edu.degree, edu.field].filter(Boolean).join(", ");
+      if (sub) lines.push(sub);
+      lines.push("");
+    }
+  }
+
+  if (certifications.length) {
+    lines.push("CERTIFICATIONS");
+    for (const c of certifications) {
+      lines.push(`${c.name ?? ""}${c.date ? "  (" + c.date + ")" : ""}`);
+      if (c.issuer) lines.push(c.issuer);
+      lines.push("");
+    }
+  }
+
+  if (projects.length) {
+    lines.push("PROJECTS");
+    for (const p of projects) {
+      lines.push(p.name ?? "");
+      if (p.description) lines.push(p.description);
+      const tech = (p.technologies ?? []).filter(Boolean).join(", ");
+      if (tech) lines.push(tech);
+      lines.push("");
+    }
+  }
+
+  return {
+    title: h.name || resume.title || "Resume",
+    text: lines.join("\n").trim(),
+  };
+}
+
+function downloadResumePdfWeb(resume: any) {
+  const { title, text } = buildResumePdfText(resume);
+
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const marginX = 54;
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const maxWidth = pageWidth - marginX * 2;
+  const lineHeight = 15;
+  let y = 64;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  const titleLines = doc.splitTextToSize(title, maxWidth);
+  for (const line of titleLines) {
+    doc.text(line, marginX, y);
+    y += 22;
+  }
+  y += 8;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+
+  for (const para of text.split("\n")) {
+    if (para.trim() === "") {
+      y += lineHeight * 0.6;
+      continue;
+    }
+    const lines = doc.splitTextToSize(para, maxWidth);
+    for (const line of lines) {
+      if (y > pageHeight - 60) {
+        doc.addPage();
+        y = 64;
+      }
+      doc.text(line, marginX, y);
+      y += lineHeight;
+    }
+  }
+
+  const safeName = (title || "resume").replace(/[^\w\- ]+/g, "").trim();
+  doc.save(`${safeName || "resume"}.pdf`);
+}
+
 function SectionBlock({
   title,
   colors,
@@ -266,6 +398,12 @@ export default function ResumeViewerScreen() {
     if (!resume) return;
     try {
       setExporting(true);
+
+      if (Platform.OS === "web") {
+        downloadResumePdfWeb(resume);
+        return;
+      }
+
       const html = buildResumeHtml(resume);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const canShare = await Sharing.isAvailableAsync();
