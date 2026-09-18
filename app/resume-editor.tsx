@@ -376,6 +376,7 @@ export default function ResumeEditorScreen() {
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: [
+          "application/pdf",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           "application/msword",
           "text/rtf",
