@@ -7,6 +7,32 @@
 //   PDF  → not supported; shows a tip to export as .txt
 
 import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
+
+// ─────────────────────────────────────────────
+// Platform-safe base64 reader
+//   Native: expo-file-system (handles file:// paths)
+//   Web:    fetch + FileReader (handles blob: URLs from DocumentPicker,
+//           which expo-file-system cannot read on web)
+// ─────────────────────────────────────────────
+async function readAsBase64(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        // result is a data URL like "data:...;base64,AAAA" — strip the prefix
+        const base64 = result.split(",")[1] ?? "";
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  return FileSystem.readAsStringAsync(uri, { encoding: "base64" as any });
+}
 
 // ─────────────────────────────────────────────
 // RTF extraction (fully local)
@@ -161,9 +187,7 @@ export async function extractTextFromFile(
   // PDF: show tip, don't even read the file
   if (isPdf) throwPdfTip();
 
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: "base64" as any,
-  });
+  const base64 = await readAsBase64(uri);
 
   if (isRtf) return extractRtfText(base64);
   if (isDocx) return extractDocxText(base64);
