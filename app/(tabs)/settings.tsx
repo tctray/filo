@@ -7,6 +7,7 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
+import { notify } from "@/utils/notify";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -18,7 +19,9 @@ import {
   ChevronRight,
   FileText,
   Info,
+  KeyRound,
   LogOut,
+  Mail,
   Moon,
   Shield,
   Sun,
@@ -26,7 +29,9 @@ import {
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -35,6 +40,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -50,7 +56,8 @@ type LocalProfile = {
 
 export default function SettingsScreen() {
   const { colors, mode, toggleTheme } = useTheme();
-  const { user, logout, refreshProfile } = useAuth() as any;
+  const { user, logout, refreshProfile, updateEmail, updatePassword } =
+    useAuth() as any;
   const {
     resumes,
     coverLetters,
@@ -70,6 +77,17 @@ export default function SettingsScreen() {
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // ── Change email modal ──
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  // ── Change password modal ──
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem("filo:profile")
@@ -240,6 +258,69 @@ export default function SettingsScreen() {
     }
   };
 
+  const openEmailModal = () => {
+    setNewEmail(user?.email ?? "");
+    setEmailModalVisible(true);
+  };
+
+  const handleSaveEmail = async () => {
+    const trimmed = newEmail.trim();
+    if (!trimmed || !trimmed.includes("@")) {
+      notify("Invalid email", "Please enter a valid email address.");
+      return;
+    }
+    if (trimmed === user?.email) {
+      setEmailModalVisible(false);
+      return;
+    }
+    try {
+      setSavingEmail(true);
+      await updateEmail(trimmed);
+      setEmailModalVisible(false);
+      notify(
+        "Confirm your new email",
+        `We've sent a confirmation link to ${trimmed}. Your email won't change until you click it.`,
+      );
+    } catch (e: any) {
+      notify(
+        "Couldn't update email",
+        e?.message ?? "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const openPasswordModal = () => {
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordModalVisible(true);
+  };
+
+  const handleSavePassword = async () => {
+    if (!newPassword.trim() || newPassword.length < 6) {
+      notify("Weak password", "Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      notify("Passwords don't match", "Please re-enter matching passwords.");
+      return;
+    }
+    try {
+      setSavingPassword(true);
+      await updatePassword(newPassword);
+      setPasswordModalVisible(false);
+      notify("Password updated", "Your password has been changed.");
+    } catch (e: any) {
+      notify(
+        "Couldn't update password",
+        e?.message ?? "Something went wrong. Please try again.",
+      );
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <ScrollView
@@ -321,6 +402,66 @@ export default function SettingsScreen() {
             />
             <StatPill value={jobs?.length ?? 0} label="Saved" color="#a78bfa" />
           </View>
+        </View>
+
+        <SectionLabel label="Account" colors={colors} />
+        <View
+          style={[
+            styles.group,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={openEmailModal}
+          >
+            <View style={styles.rowLeft}>
+              <View
+                style={[
+                  styles.iconWrap,
+                  { backgroundColor: colors.surfacePressed ?? colors.border },
+                ]}
+              >
+                <Mail color={colors.textSecondary} size={17} />
+              </View>
+              <View>
+                <Text style={[styles.rowText, { color: colors.text }]}>
+                  Change Email
+                </Text>
+                <Text
+                  style={[styles.rowSubtext, { color: colors.textTertiary }]}
+                  numberOfLines={1}
+                >
+                  {user?.email ?? ""}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight color={colors.textTertiary} size={18} />
+          </TouchableOpacity>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <TouchableOpacity
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={openPasswordModal}
+          >
+            <View style={styles.rowLeft}>
+              <View
+                style={[
+                  styles.iconWrap,
+                  { backgroundColor: colors.surfacePressed ?? colors.border },
+                ]}
+              >
+                <KeyRound color={colors.textSecondary} size={17} />
+              </View>
+              <Text style={[styles.rowText, { color: colors.text }]}>
+                Change Password
+              </Text>
+            </View>
+            <ChevronRight color={colors.textTertiary} size={18} />
+          </TouchableOpacity>
         </View>
 
         <SectionLabel label="Preferences" colors={colors} />
@@ -568,6 +709,7 @@ export default function SettingsScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* ── Default resume picker ── */}
       <Modal
         transparent
         animationType="slide"
@@ -671,6 +813,205 @@ export default function SettingsScreen() {
             </ScrollView>
           </View>
         </Pressable>
+      </Modal>
+
+      {/* ── email modal ── */}
+      <Modal
+        transparent
+        animationType="slide"
+        visible={emailModalVisible}
+        onRequestClose={() => setEmailModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setEmailModalVisible(false)}
+          >
+            <Pressable
+              style={[
+                styles.modalSheet,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Change Email
+              </Text>
+              <Text style={[styles.modalSub, { color: colors.textTertiary }]}>
+                We'll send a confirmation link to your new address before the
+                change takes effect.
+              </Text>
+
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor:
+                      colors.inputBackground ?? colors.background,
+                    color: colors.text,
+                    borderColor: colors.border,
+                  },
+                ]}
+                placeholder="new@email.com"
+                placeholderTextColor={colors.textTertiary}
+                value={newEmail}
+                onChangeText={setNewEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+                autoFocus
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    {
+                      backgroundColor: colors.surfacePressed ?? colors.border,
+                    },
+                  ]}
+                  onPress={() => setEmailModalVisible(false)}
+                >
+                  <Text
+                    style={{ color: colors.textSecondary, fontWeight: "600" }}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    {
+                      backgroundColor: colors.accent,
+                      opacity: savingEmail ? 0.7 : 1,
+                    },
+                  ]}
+                  onPress={handleSaveEmail}
+                  disabled={savingEmail}
+                >
+                  {savingEmail ? (
+                    <ActivityIndicator color={colors.accentText} size="small" />
+                  ) : (
+                    <Text
+                      style={{ color: colors.accentText, fontWeight: "700" }}
+                    >
+                      Save
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Change password modal ── */}
+      <Modal
+        transparent
+        animationType="slide"
+        visible={passwordModalVisible}
+        onRequestClose={() => setPasswordModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setPasswordModalVisible(false)}
+          >
+            <Pressable
+              style={[
+                styles.modalSheet,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Change Password
+              </Text>
+              <Text style={[styles.modalSub, { color: colors.textTertiary }]}>
+                Choose a new password for your account.
+              </Text>
+
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor:
+                      colors.inputBackground ?? colors.background,
+                    color: colors.text,
+                    borderColor: colors.border,
+                  },
+                ]}
+                placeholder="New password (min. 6 characters)"
+                placeholderTextColor={colors.textTertiary}
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                autoFocus
+              />
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor:
+                      colors.inputBackground ?? colors.background,
+                    color: colors.text,
+                    borderColor: colors.border,
+                    marginTop: 10,
+                  },
+                ]}
+                placeholder="Confirm new password"
+                placeholderTextColor={colors.textTertiary}
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                onSubmitEditing={handleSavePassword}
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    {
+                      backgroundColor: colors.surfacePressed ?? colors.border,
+                    },
+                  ]}
+                  onPress={() => setPasswordModalVisible(false)}
+                >
+                  <Text
+                    style={{ color: colors.textSecondary, fontWeight: "600" }}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    {
+                      backgroundColor: colors.accent,
+                      opacity: savingPassword ? 0.7 : 1,
+                    },
+                  ]}
+                  onPress={handleSavePassword}
+                  disabled={savingPassword}
+                >
+                  {savingPassword ? (
+                    <ActivityIndicator color={colors.accentText} size="small" />
+                  ) : (
+                    <Text
+                      style={{ color: colors.accentText, fontWeight: "700" }}
+                    >
+                      Save
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -820,6 +1161,25 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: "800", marginBottom: 4 },
   modalSub: { fontSize: 13, marginBottom: 16 },
+  modalInput: {
+    height: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    borderWidth: 1,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   resumeOption: {
     flexDirection: "row",
     alignItems: "center",

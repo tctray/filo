@@ -46,6 +46,16 @@ export type AuthContextValue = {
    * without needing a full app reload.
    */
   refreshProfile: () => Promise<void>;
+
+  /** Changes the logged-in user's email. Supabase emails a confirmation
+   * link to the new address; the change isn't final until it's clicked. */
+  updateEmail: (newEmail: string) => Promise<void>;
+
+  /** Changes the logged-in user's password immediately. */
+  updatePassword: (newPassword: string) => Promise<void>;
+
+  /** Sends a password-reset email with a link back to `redirectTo`. */
+  sendPasswordReset: (email: string, redirectTo: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -189,6 +199,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // ── Change email (while logged in) ──
+  // Supabase sends a confirmation link to the NEW address; the email
+  // doesn't actually change until that link is clicked.
+  const updateEmail = async (newEmail: string) => {
+    const { error } = await supabase.auth.updateUser({ email: newEmail });
+    if (error) throw new Error(error.message);
+  };
+
+  // ── Change password (while logged in) ──
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+    if (error) throw new Error(error.message);
+  };
+
+  // ── Forgot password — sends a reset link to the given email ──
+  const sendPasswordReset = async (email: string, redirectTo: string) => {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    if (error) throw new Error(error.message);
+  };
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -203,6 +237,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerError,
       logout,
       refreshProfile,
+      updateEmail,
+      updatePassword,
+      sendPasswordReset,
     }),
     [
       user,

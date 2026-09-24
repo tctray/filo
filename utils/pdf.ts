@@ -6,7 +6,7 @@ import { Platform } from "react-native";
 import type { CoverLetter, Resume } from "@/types";
 
 /** Basic HTML escaping for safety */
-function esc(s: string) {
+function esc(s: string | undefined) {
   return (s ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")

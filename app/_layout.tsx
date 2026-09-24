@@ -1,6 +1,6 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Platform, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-get-random-values";
@@ -42,8 +42,11 @@ function AuthGuard() {
 
     const currentScreen = segments[0] as string | undefined;
     const inTabs = currentScreen === "(tabs)";
-    const inAuth = currentScreen === "login" || currentScreen === "register";
-
+    const inAuth =
+      currentScreen === "login" ||
+      currentScreen === "register" ||
+      currentScreen === "forgotpass" ||
+      currentScreen === "reset-password";
     if (!user && inTabs) {
       router.replace("/login" as never);
     } else if (user && inAuth) {

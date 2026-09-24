@@ -57,9 +57,58 @@ export type UploadedFile = {
   size?: number;
 };
 
+export type ResumeSectionType =
+  | "summary"
+  | "experience"
+  | "skills"
+  | "education"
+  | "projects"
+  | "certifications";
+
 export type Resume = {
   id: string;
   title: string;
+  isDraft?: boolean;
+  header?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    links?: string[];
+  };
+  summary?: string;
+  skills?: string[];
+  experience?: Array<{
+    id: string;
+    company: string;
+    title: string;
+    startDate?: string;
+    endDate?: string;
+    bullets: string[];
+  }>;
+  education?: Array<{
+    id: string;
+    institution: string;
+    degree?: string;
+    field?: string;
+    startDate?: string;
+    endDate?: string;
+  }>;
+  certifications?: Array<{
+    id: string;
+    name: string;
+    issuer?: string;
+    date?: string;
+  }>;
+  projects?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    technologies?: string[];
+    link?: string;
+  }>;
+  sectionOrder?: ResumeSectionType[];
+  folder?: string;
   createdAt: string;
   updatedAt: string;
   [key: string]: any;
