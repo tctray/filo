@@ -24,7 +24,7 @@ import {
   Sun,
   Trash2,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -50,7 +50,7 @@ type LocalProfile = {
 
 export default function SettingsScreen() {
   const { colors, mode, toggleTheme } = useTheme();
-  const { user, logout } = useAuth() as any;
+  const { user, logout, refreshProfile } = useAuth() as any;
   const {
     resumes,
     coverLetters,
@@ -225,6 +225,7 @@ export default function SettingsScreen() {
 
       const { publicUrl } = await uploadAvatarForCurrentUser(localUri);
       await saveAvatarUrlToProfile(publicUrl);
+      await refreshProfile();
 
       setAvatarUrl(publicUrl);
 

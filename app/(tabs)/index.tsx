@@ -1,20 +1,15 @@
 // app/(tabs)/index.tsx
 import { FiloAvatar } from "@/components/FiloAvatar";
+import { useAuth } from "@/providers/AuthProvider";
 import { useData } from "@/providers/DataProvider";
 import { useTheme } from "@/providers/ThemeProvider";
+import { confirmAction, notify } from "@/utils/notify";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  Alert,
   Animated,
   FlatList,
   PanResponder,
@@ -250,23 +245,9 @@ function SwipeableRow({
   );
 }
 
-// ── Main screen ──
-//supabase test
-
-import { supabase } from "@/lib/supabase";
-
-async function testConnection() {
-  const { data, error } = await supabase.from("applications").select("*");
-
-  if (error) {
-    console.log("Supabase error:", error);
-  } else {
-    console.log("Supabase connected:", data);
-  }
-}
-
 export default function HomeScreen() {
   const { colors, mode } = useTheme();
+  const { user } = useAuth() as any;
   const {
     resumes,
     coverLetters,
@@ -326,6 +307,13 @@ export default function HomeScreen() {
     return events.sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4);
   }, [applications]);
 
+  const displayFirstName = useMemo(() => {
+    if (firstName) return firstName;
+    const metaName = user?.name || user?.user_metadata?.name;
+    if (metaName) return metaName.split(" ")[0];
+    return "";
+  }, [firstName, user]);
+
   const allRecent = useMemo<RecentEntry[]>(() => {
     const entries: RecentEntry[] = [
       ...(resumes ?? []).map((item) => ({
@@ -360,20 +348,14 @@ export default function HomeScreen() {
 
   const confirmClear = () => {
     if (recentItems.length === 0) return;
-    Alert.alert(
+    confirmAction(
       "Clear Recent?",
       "This hides items from the recent list. Your data won't be deleted.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: () => {
-            clearKey.current += 1;
-            setDismissed(new Set(allRecent.map((e) => e.key)));
-          },
-        },
-      ],
+      () => {
+        clearKey.current += 1;
+        setDismissed(new Set(allRecent.map((e) => e.key)));
+      },
+      "Clear",
     );
   };
 
@@ -405,27 +387,20 @@ export default function HomeScreen() {
         kind === "application"
           ? `${item.company} — ${item.roleTitle}`
           : (item.title ?? "this item");
-      Alert.alert(
+      confirmAction(
         `Delete ${KIND_META[kind].label}?`,
         `"${name}" will be permanently deleted.`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                if (kind === "resume") await (deleteResume as any)(item.id);
-                if (kind === "coverletter")
-                  await (deleteCoverLetter as any)(item.id);
-                if (kind === "application")
-                  await (deleteApplication as any)(item.id);
-              } catch (e: any) {
-                Alert.alert("Delete failed", e?.message ?? "Could not delete.");
-              }
-            },
-          },
-        ],
+        async () => {
+          try {
+            if (kind === "resume") await (deleteResume as any)(item.id);
+            if (kind === "coverletter")
+              await (deleteCoverLetter as any)(item.id);
+            if (kind === "application")
+              await (deleteApplication as any)(item.id);
+          } catch (e: any) {
+            notify("Delete failed", e?.message ?? "Could not delete.");
+          }
+        },
       );
     },
     [deleteResume, deleteCoverLetter, deleteApplication],
@@ -462,13 +437,19 @@ export default function HomeScreen() {
                 <Text
                   style={[styles.welcomeSmall, { color: colors.textSecondary }]}
                 >
-                  {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+                  {displayFirstName
+                    ? `Welcome back, ${displayFirstName}`
+                    : "Welcome back"}
                 </Text>
                 <Text style={[styles.welcomeBig, { color: colors.text }]}>
                   Filo
                 </Text>
               </View>
-              <FiloAvatar colors={colors} size={54} />
+              <FiloAvatar
+                colors={colors}
+                size={54}
+                imageUri={user?.avatar_url ?? undefined}
+              />
             </View>
             <View style={styles.statRow}>
               <StatCard

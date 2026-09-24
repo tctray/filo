@@ -14,7 +14,12 @@ export type RegisterPayload = {
   password: string;
   name?: string;
 };
-export type AuthUser = { id: string; email: string; name?: string };
+export type AuthUser = {
+  id: string;
+  email: string;
+  name?: string;
+  avatar_url?: string | null;
+};
 
 export type AuthContextValue = {
   user: AuthUser | null;
@@ -32,9 +37,29 @@ export type AuthContextValue = {
   registerError: string | null;
 
   logout: () => Promise<void>;
+
+  /**
+   * Re-fetches the current user's profile (including avatar_url) from
+   * Supabase and updates the shared user object. Call this after any
+   * screen updates the profile (e.g. after uploading a new avatar) so
+   * every screen reading `user` picks up the change immediately,
+   * without needing a full app reload.
+   */
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+async function fetchAvatarUrl(userId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("avatar_url")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) return null;
+  return data.avatar_url ?? null;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -45,29 +70,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [registerError, setRegisterError] = useState<string | null>(null);
 
+  const buildUser = async (sUser: {
+    id: string;
+    email?: string | null;
+    user_metadata?: any;
+  }): Promise<AuthUser> => {
+    const avatar_url = await fetchAvatarUrl(sUser.id);
+    return {
+      id: sUser.id,
+      email: sUser.email ?? "",
+      name: sUser.user_metadata?.name,
+      avatar_url,
+    };
+  };
+
   // ── Restore session on mount ──
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       const s = data.session;
       if (s?.user) {
-        setUser({
-          id: s.user.id,
-          email: s.user.email ?? "",
-          name: s.user.user_metadata?.name,
-        });
+        setUser(await buildUser(s.user));
       }
       setIsReady(true);
     });
 
     // Keep in sync with Supabase auth state changes
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email ?? "",
-            name: session.user.user_metadata?.name,
-          });
+          setUser(await buildUser(session.user));
         } else {
           setUser(null);
         }
@@ -150,6 +181,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // ── Refresh profile (call after updating avatar, name, etc.) ──
+  const refreshProfile = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (data?.user) {
+      setUser(await buildUser(data.user));
+    }
+  };
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -163,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginError,
       registerError,
       logout,
+      refreshProfile,
     }),
     [
       user,

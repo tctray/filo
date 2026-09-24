@@ -6,7 +6,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Print from "expo-print";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Sharing from "expo-sharing";
-import { jsPDF } from "jspdf";
 import React, { useCallback, useState } from "react";
 import {
   ActionSheetIOS,
@@ -141,10 +140,15 @@ function buildResumeHtml(resume: any): string {
 }
 
 // ─────────────────────────────────────────────
-// Web-only PDF export (expo-print opens a print dialog on web instead
-// of downloading a file, so we build a plain-text PDF client-side with
-// jsPDF here). Native platforms keep using buildResumeHtml + expo-print
-// + expo-sharing, untouched, below in handleExportPdf.
+// Web-only PDF export. expo-print opens the browser's print dialog on
+// web instead of downloading a file, so we build a plain-text PDF
+// client-side with jsPDF here. jsPDF is imported DYNAMICALLY (only
+// inside this async function) rather than as a top-level import —
+// jsPDF depends on Node/browser-only encoding APIs (e.g. "latin1")
+// that don't exist in React Native's JS engine (Hermes), so a static
+// top-level import crashes the native app immediately on startup even
+// though this code path never runs there. A dynamic import only loads
+// the module when actually called, i.e. only on web.
 // ─────────────────────────────────────────────
 function buildResumePdfText(resume: any): { title: string; text: string } {
   const h = (resume.header ?? {}) as {
@@ -228,7 +232,9 @@ function buildResumePdfText(resume: any): { title: string; text: string } {
   };
 }
 
-function downloadResumePdfWeb(resume: any) {
+async function downloadResumePdfWeb(resume: any) {
+  const { jsPDF } = await import("jspdf");
+
   const { title, text } = buildResumePdfText(resume);
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -400,7 +406,7 @@ export default function ResumeViewerScreen() {
       setExporting(true);
 
       if (Platform.OS === "web") {
-        downloadResumePdfWeb(resume);
+        await downloadResumePdfWeb(resume);
         return;
       }
 
